@@ -86,9 +86,9 @@ type Logger struct {
 	// rotated. It defaults to 100 megabytes.
 	MaxSize int `json:"maxsize" yaml:"maxsize"`
 
-	// MaxAge is the maximum number of days to retain old log files based on the
+	// MaxAge is the maximum number of hours to retain old log files based on the
 	// timestamp encoded in their filename.  Note that a day is defined as 24
-	// hours and may not exactly correspond to calendar days due to daylight
+	// hours and may not exactly correspond to calendar hours due to daylight
 	// savings, leap seconds, etc. The default is not to remove old log files
 	// based on age.
 	MaxAge int `json:"maxage" yaml:"maxage"`
@@ -334,7 +334,7 @@ func (l *Logger) millRunOnce() error {
 		files = remaining
 	}
 	if l.MaxAge > 0 {
-		diff := time.Duration(int64(24*time.Hour) * int64(l.MaxAge))
+		diff := time.Duration(int64(1*time.Hour) * int64(l.MaxAge))
 		cutoff := currentTime().Add(-1 * diff)
 
 		var remaining []logInfo
