@@ -111,6 +111,8 @@ type Logger struct {
 	// Cut Hour
 	CutHour bool `json:"cuthour", yaml:"cuthour"`
 
+	CurrentFileHour int `json:"currentfilehour", yaml:"currentfilehour"`
+
 	size int64
 	file *os.File
 	mu   sync.Mutex
@@ -162,6 +164,12 @@ func (l *Logger) Write(p []byte) (n int, err error) {
 	}
 
 	if l.size+writeLen > l.max() {
+		if err := l.rotate(); err != nil {
+			return 0, err
+		}
+	}
+
+	if l.CutHour && currentTime().Hour() != l.CurrentFileHour {
 		if err := l.rotate(); err != nil {
 			return 0, err
 		}
@@ -230,7 +238,8 @@ func (l *Logger) openNew() error {
 		// Copy the mode off the old logfile.
 		mode = info.Mode()
 		// move the existing file
-		newname := backupName(name, l.LocalTime, l.getTimeFormat())
+		newname, hour := backupName(name, l.LocalTime, l.getTimeFormat())
+		l.CurrentFileHour = hour
 		if err := os.Rename(name, newname); err != nil {
 			return fmt.Errorf("can't rename log file: %s", err)
 		}
@@ -256,7 +265,7 @@ func (l *Logger) openNew() error {
 // backupName creates a new filename from the given name, inserting a timestamp
 // between the filename and the extension, using the local time if requested
 // (otherwise UTC).
-func backupName(name string, local bool, format string) string {
+func backupName(name string, local bool, format string) (string, int) {
 	dir := filepath.Dir(name)
 	filename := filepath.Base(name)
 	ext := filepath.Ext(filename)
@@ -267,7 +276,7 @@ func backupName(name string, local bool, format string) string {
 	}
 
 	timestamp := t.Format(format)
-	return filepath.Join(dir, fmt.Sprintf("%s-%s%s", prefix, timestamp, ext))
+	return filepath.Join(dir, fmt.Sprintf("%s-%s%s", prefix, timestamp, ext)), t.Hour()
 }
 
 // openExistingOrNew opens the logfile if it exists and if the current write
@@ -306,7 +315,9 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 // filename generates the name of the logfile from the current time.
 func (l *Logger) filename() string {
 	if l.Filename != "" {
-		return backupName(l.Filename, l.LocalTime, l.getTimeFormat())
+		fileName, hour := backupName(l.Filename, l.LocalTime, l.getTimeFormat())
+		l.CurrentFileHour = hour
+		return fileName
 	}
 	name := filepath.Base(os.Args[0]) + "-lumberjack.log"
 	return filepath.Join(os.TempDir(), name)
