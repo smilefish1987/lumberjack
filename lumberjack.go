@@ -36,7 +36,8 @@ import (
 )
 
 const (
-	backupTimeFormat = "2006-01-02-15"
+	backupTimeFormat = "2006-01-02T15-04-05.000"
+	cutHourFormat    = "2006-01-02-15"
 	compressSuffix   = ".gz"
 	defaultMaxSize   = 100
 )
@@ -86,9 +87,9 @@ type Logger struct {
 	// rotated. It defaults to 100 megabytes.
 	MaxSize int `json:"maxsize" yaml:"maxsize"`
 
-	// MaxAge is the maximum number of hours to retain old log files based on the
+	// MaxAge is the maximum number of days to retain old log files based on the
 	// timestamp encoded in their filename.  Note that a day is defined as 24
-	// hours and may not exactly correspond to calendar hours due to daylight
+	// hours and may not exactly correspond to calendar days due to daylight
 	// savings, leap seconds, etc. The default is not to remove old log files
 	// based on age.
 	MaxAge int `json:"maxage" yaml:"maxage"`
@@ -106,6 +107,9 @@ type Logger struct {
 	// Compress determines if the rotated log files should be compressed
 	// using gzip. The default is not to perform compression.
 	Compress bool `json:"compress" yaml:"compress"`
+
+	// Cut Hour
+	CutHour bool `json:"cuthour", yaml:"cuthour"`
 
 	size int64
 	file *os.File
@@ -127,6 +131,14 @@ var (
 	// to disk.
 	megabyte = 1024 * 1024
 )
+
+func (l *Logger) getTimeFormat() string {
+	if l.CutHour {
+		return cutHourFormat
+	}
+
+	return backupTimeFormat
+}
 
 // Write implements io.Writer.  If a write would cause the log file to be larger
 // than MaxSize, the file is closed, renamed to include a timestamp of the
@@ -218,7 +230,7 @@ func (l *Logger) openNew() error {
 		// Copy the mode off the old logfile.
 		mode = info.Mode()
 		// move the existing file
-		newname := backupName(name, l.LocalTime)
+		newname := backupName(name, l.LocalTime, l.getTimeFormat())
 		if err := os.Rename(name, newname); err != nil {
 			return fmt.Errorf("can't rename log file: %s", err)
 		}
@@ -244,7 +256,7 @@ func (l *Logger) openNew() error {
 // backupName creates a new filename from the given name, inserting a timestamp
 // between the filename and the extension, using the local time if requested
 // (otherwise UTC).
-func backupName(name string, local bool) string {
+func backupName(name string, local bool, format string) string {
 	dir := filepath.Dir(name)
 	filename := filepath.Base(name)
 	ext := filepath.Ext(filename)
@@ -254,8 +266,8 @@ func backupName(name string, local bool) string {
 		t = t.UTC()
 	}
 
-	timestamp := t.Format(backupTimeFormat)
-	return filepath.Join(dir, fmt.Sprintf("%s.%s%s", prefix, timestamp, ext))
+	timestamp := t.Format(format)
+	return filepath.Join(dir, fmt.Sprintf("%s-%s%s", prefix, timestamp, ext))
 }
 
 // openExistingOrNew opens the logfile if it exists and if the current write
@@ -265,6 +277,9 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 	l.mill()
 
 	filename := l.filename()
+	if l.CutHour {
+		filename = backupName(filename, l.LocalTime, l.getTimeFormat())
+	}
 	info, err := osStat(filename)
 	if os.IsNotExist(err) {
 		return l.openNew()
@@ -334,7 +349,7 @@ func (l *Logger) millRunOnce() error {
 		files = remaining
 	}
 	if l.MaxAge > 0 {
-		diff := time.Duration(int64(1*time.Hour) * int64(l.MaxAge))
+		diff := time.Duration(int64(24*time.Hour) * int64(l.MaxAge))
 		cutoff := currentTime().Add(-1 * diff)
 
 		var remaining []logInfo
@@ -438,7 +453,7 @@ func (l *Logger) timeFromName(filename, prefix, ext string) (time.Time, error) {
 		return time.Time{}, errors.New("mismatched extension")
 	}
 	ts := filename[len(prefix) : len(filename)-len(ext)]
-	return time.Parse(backupTimeFormat, ts)
+	return time.Parse(l.getTimeFormat(), ts)
 }
 
 // max returns the maximum size in bytes of log files before rolling.
