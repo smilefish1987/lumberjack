@@ -277,9 +277,9 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 	l.mill()
 
 	filename := l.filename()
-	if l.CutHour {
-		filename = backupName(filename, l.LocalTime, l.getTimeFormat())
-	}
+	// if l.CutHour {
+	// 	filename = backupName(filename, l.LocalTime, l.getTimeFormat())
+	// }
 	info, err := osStat(filename)
 	if os.IsNotExist(err) {
 		return l.openNew()
@@ -306,7 +306,7 @@ func (l *Logger) openExistingOrNew(writeLen int) error {
 // filename generates the name of the logfile from the current time.
 func (l *Logger) filename() string {
 	if l.Filename != "" {
-		return l.Filename
+		return backupName(l.Filename, l.LocalTime, l.getTimeFormat())
 	}
 	name := filepath.Base(os.Args[0]) + "-lumberjack.log"
 	return filepath.Join(os.TempDir(), name)
